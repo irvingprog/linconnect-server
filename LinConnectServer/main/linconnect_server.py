@@ -20,10 +20,7 @@
 from __future__ import print_function
 
 # Imports
-try:
-    import ConfigParser
-except ImportError:
-    import configparser as ConfigParser
+import json
 import os
 import sys
 import select
@@ -43,33 +40,34 @@ _notification_description = ""
 
 # Configuration
 current_dir = os.path.abspath(os.path.dirname(__file__))
-conf_file = os.path.join(current_dir, 'conf.ini')
-try:
-    with open(conf_file):
-        print("Loading conf.ini")
-except IOError:
-    print("Creating conf.ini")
-    with open(conf_file, 'w') as text_file:
-        text_file.write("""[connection]
-port = 9090
-enable_bonjour = 1
+conf_file = os.path.join(current_dir, 'conf.json')
 
-[other]
-enable_instruction_webpage = 1
-notify_timeout = 5000""")
-
-parser = ConfigParser.ConfigParser()
-parser.read(conf_file)
-del conf_file
+if os.path.exists(conf_file):
+    with open(conf_file) as conf_json:
+        print('Loading and open conf.json')
+        conf = json.load(conf_json)
+else:
+    conf = {
+        "connection": {
+            "enable_bonjour": "1", 
+            "port": "9090"
+        }, 
+        "other": {
+            "enable_instruction_webpage": "1", 
+            "notify_timeout": "5000"
+        }
+    }
+    with open(conf_file, 'w') as conf_json:
+        print('Making conf.json')
+        json.dump(conf, conf_json, sort_keys=True, indent=4)
 
 # Must append port because Java Bonjour library can't determine it
 _service_name = platform.node()
 
 icon_path = os.path.join(current_dir, "icon_cache.png")
 
-
 class Notification(object):
-    if parser.getboolean('other', 'enable_instruction_webpage') == 1:
+    if int(conf['other']['enable_instruction_webpage']) == 1: 
         with open(os.path.join(current_dir, 'index.html'), 'rb') as f:
             _index_source = f.read()
 
@@ -105,8 +103,8 @@ class Notification(object):
 
             # Send the notification
             notif = Notify.Notification.new(_notification_header, _notification_description, icon_path)
-            if parser.has_option('other', 'notify_timeout'):
-                notif.set_timeout(parser.getint('other', 'notify_timeout'))
+            if conf['other']['notify_timeout']:
+                notif.set_timeout(int(conf['other']['notify_timeout']))
             try:
                 notif.show()
             except:
@@ -127,7 +125,7 @@ def register_callback(sdRef, flags, errorCode, name, regtype, domain):
 def initialize_bonjour():
     sdRef = pybonjour.DNSServiceRegister(name=_service_name,
                                      regtype="_linconnect._tcp",
-                                     port=int(parser.get('connection', 'port')),
+                                     port=int(conf['connection']['port']),
                                      callBack=register_callback)
     try:
         try:
@@ -145,7 +143,7 @@ def get_local_ip(delim):
     ips = ""
     for ip in subprocess.check_output("/sbin/ip address | grep -i 'inet ' | awk {'print $2'} | sed -e 's/\/[^\/]*$//'", shell=True).split("\n"):
         if "127" not in ip and ip.__len__() > 0:
-            ips += ip + ":" + parser.get('connection', 'port') + delim
+            ips += "{0}:{1}{2}".format(ip, conf['connection']['port'],delim)
     return ips
 
 # Initialization
@@ -153,16 +151,16 @@ if not Notify.init("com.willhauck.linconnect"):
     raise ImportError("Error initializing libnotify")
 
 # Start Bonjour if desired
-if parser.getboolean('connection', 'enable_bonjour') == 1:
+if int(conf['connection']['enable_bonjour']) == 1:
     thr = threading.Thread(target=initialize_bonjour)
     thr.start()
 
-config_instructions = "Configuration instructions at http://localhost:" + parser.get('connection', 'port')
+config_instructions = "Configuration instructions at http://localhost:" + conf['connection']['port']
 print(config_instructions)
 notif = Notify.Notification.new("Notification server started", config_instructions, "info")
 notif.show()
 
 cherrypy.server.socket_host = '0.0.0.0'
-cherrypy.server.socket_port = int(parser.get('connection', 'port'))
+cherrypy.server.socket_port = int(conf['connection']['port'])
 
 cherrypy.quickstart(Notification())

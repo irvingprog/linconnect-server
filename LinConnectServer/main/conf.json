@@ -1,0 +1,10 @@
+{
+    "connection": {
+        "enable_bonjour": "1", 
+        "port": "9090"
+    }, 
+    "other": {
+        "enable_instruction_webpage": "1", 
+        "notify_timeout": "5000"
+    }
+}
